@@ -15,8 +15,12 @@ https://googlechromelabs.github.io/chrome-for-testing/
 
 ![image](https://github.com/user-attachments/assets/5425a43e-df5f-4c21-aae9-7f6c307f8151)
 
-coloque na pasta "C:\Temp" de preferencia
+coloque o "chromedriver.exe" na pasta "C:\Temp" de preferencia
 
+
+
+
+(LEGADO, PARTE FOI INCLUSA NO EXECUTAVEL .BAT)
 Selenium:
 - Terminal
 pip install selenium
