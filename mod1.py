@@ -1,12 +1,14 @@
 import time
 import random
+import subprocess
+import sys
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import (
     TimeoutException,
     StaleElementReferenceException,
-    ElementClickInterceptedException
+    ElementClickInterceptedException,
 )
 
 
@@ -14,6 +16,7 @@ def func1(driver, max_delay_minutos=5):
     """
     Percorre a lista de usuários, abre cada perfil e
     chama seguir_curtidores em cada post encontrado.
+    Entre cada post (exceto o primeiro), executa del.py como subprocesso.
     """
     usuarios = carregar_usuarios()
     if not usuarios:
@@ -27,21 +30,27 @@ def func1(driver, max_delay_minutos=5):
             wait = WebDriverWait(driver, 15)
             wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "main[role='main']")))
 
-            # espera e coleta links de posts
             anchors = wait.until(EC.presence_of_all_elements_located((
                 By.XPATH, "//main//a[contains(@href,'/p/')]")
             ))
             posts_links = [a.get_attribute("href") for a in anchors]
             print(f"[Depuração] {len(posts_links)} posts encontrados para {usuario}")
 
-            for post_url in posts_links:
-                try:
-                    driver.get(post_url)
-                    wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, "article")))
-                    time.sleep(2)
-                    seguir_curtidores(driver, max_delay_minutos)
-                except Exception as e:
-                    print(f"[Erro] ao processar post {post_url}: {e}")
+            for idx, post_url in enumerate(posts_links):
+                # Executa del.py antes de cada post, exceto o primeiro
+                if idx > 0:
+                    print("[Delay] Executando script de engajamento (del.py)...")
+                    try:
+                        subprocess.run([sys.executable, "del.py"], check=True)
+                        print("[Delay] del.py concluído. Retomando mod1.py.")
+                    except subprocess.CalledProcessError as e:
+                        print(f"[Aviso] del.py retornou código {e.returncode}, prosseguindo sem delay extra.")
+
+                print(f"[Processando post] {idx+1}/{len(posts_links)}: {post_url}")
+                driver.get(post_url)
+                wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, "article")))
+                time.sleep(2)
+                seguir_curtidores(driver, max_delay_minutos)
 
         except Exception as e:
             print(f"[Erro] ao abrir perfil {usuario}: {e}")
@@ -49,13 +58,12 @@ def func1(driver, max_delay_minutos=5):
 
 def seguir_curtidores(driver, max_delay_minutos):
     """
-    Abre a lista de curtidores de um post e clica
-    em todos os botões 'Seguir' ou 'Follow'.
+    Abre a lista de curtidores de um post e clica em uma quantidade
+    fixa de 1 usuário para teste, depois retorna.
     """
     try:
         wait = WebDriverWait(driver, 10)
 
-        # 1) Encontra e clica no link de curtidores
         like_links = driver.find_elements(By.XPATH, "//a[contains(@href,'/liked_by/')]")
         for link in reversed(like_links):
             if link.is_displayed():
@@ -68,13 +76,10 @@ def seguir_curtidores(driver, max_delay_minutos):
 
         time.sleep(2)
 
-        # 2) Localiza o container rolável dentro do modal
         scroll_box = wait.until(EC.presence_of_element_located((
             By.XPATH,
-            "//div[@role='dialog']//div[contains(@style,'overflow')]"
-        )))
-
-        # 3) Rola até o fim para carregar todos os itens
+            "//div[@role='dialog']//div[contains(@style,'overflow')]")
+        ))
         last_height = driver.execute_script("return arguments[0].scrollHeight", scroll_box)
         while True:
             driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", scroll_box)
@@ -84,17 +89,16 @@ def seguir_curtidores(driver, max_delay_minutos):
                 break
             last_height = new_height
 
-        # 4) Coleta e clica botões de seguir focando no atributo dir e texto
+        # Ajusta XPath usando 'or' para múltiplos textos
         follow_buttons = scroll_box.find_elements(
             By.XPATH,
-            (
-                ".//button[.//div[@dir='auto' and normalize-space(text())='Follow']]"
-                "|.//button[.//div[@dir='auto' and normalize-space(text())='Seguir']]"
-            )
+            ".//button[.//div[@dir='auto' and normalize-space(text())='Follow'] or .//div[@dir='auto' and normalize-space(text())='Seguir']]"
         )
-        print(f"[Depuração] {len(follow_buttons)} botões de seguir encontrados.")
+        total = len(follow_buttons)
+        to_click = 1  # teste fixo
+        print(f"[Depuração] {total} botões encontrados, seguindo {to_click}.")
 
-        for btn in follow_buttons:
+        for btn in follow_buttons[:to_click]:
             try:
                 btn.click()
                 print("[Ação] Seguiu um usuário.")
@@ -147,3 +151,21 @@ def parse_usuarios(texto):
     if ',' in texto:
         return [p.strip() for p in texto.split(',') if p.strip()]
     return texto.split()
+
+
+if __name__ == "__main__":
+    from selenium import webdriver
+    from selenium.webdriver.chrome.service import Service
+    from selenium.webdriver.chrome.options import Options
+
+    chrome_driver_path = r"C:\Temp\chromedriver.exe"
+    debug_port = 9222
+
+    options = Options()
+    options.debugger_address = f"127.0.0.1:{debug_port}"
+    service = Service(chrome_driver_path)
+    driver = webdriver.Chrome(service=service, options=options)
+
+    max_delay_minutos = 5
+    func1(driver, max_delay_minutos)
+    driver.quit()
